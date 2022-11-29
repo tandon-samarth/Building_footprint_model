@@ -1,5 +1,5 @@
 {
-    "subscription_id": "4053f59e-e58c-425d-90d1-e738fb166047",
-    "resource_group": "sb-ml-dev",
-    "workspace_name": "poi-ml-test"
+    "subscription_id": "2888fde7-9a5c-48fc-8623-84f525de174c",
+    "resource_group": "poi_datalake",
+    "workspace_name": "poi_machine_learning_workspace"
 }
