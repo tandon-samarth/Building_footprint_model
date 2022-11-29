@@ -2,14 +2,16 @@ import argparse
 import os
 import warnings
 from os import path as osp
-
+import azureml.core as azure_core
+import time
 from data_pipeline.data_generator import DataGenerator
 from train_pipeline.segmentation_unet import TrainNetwork
 from utils.img_utils import create_logger as logger
+from utils.azutils import download_datasets
 
 warnings.filterwarnings("ignore")
 
-WORKDIR = os.getcwd()
+VM_BASE_PATH = "/home/"
 outlog = logger()
 
 parser = argparse.ArgumentParser(description='Data and Train Pipeline for building footprint detection')
@@ -25,22 +27,34 @@ parser.add_argument('--optimizer', default='adam', type=str, help='Optimizer con
 parser.add_argument('--batch_size', default=8, type=int, help='batch size for training default 8')
 parser.add_argument('--lr', type=float, default=0.001, help='Model learning rate')
 parser.add_argument('--imgsize', type=int, default=512, help='image size of the image')
-parser.add_argument('--verbose', type=int, default=0, help='show output 0/1')
+parser.add_argument('--verbose', type=int, default=1, help='show output 0/1')
 parser.add_argument('-o', '--out_path', default='runs', help='Path to save output artifacts')
 args = parser.parse_args()
-outlog.info("data Path :",args.path)
 
-image_path = osp.join(args.path, 'Image')
+# Get the experiment run context
+run = azure_core.Run.get_context()
+# Get Azure Machine Learning workspace
+ws = run.experiment.workspace
+
+# Download all data at specified VM path
+download_time_start = time.time()
+download_datasets(ws, args.ground_truth_data, VM_BASE_PATH)
+download_duration = round(time.time() - download_time_start)
+
+run.log("Download dataset duration", f"{download_duration // 60}min {download_duration % 60}s")
+run.log("os path in vm ".format(os.system('ls /home/')))
+
+image_path = osp.join(VM_BASE_PATH, args.path, 'Image')
 rgb_images = [osp.join(image_path, image_names) for image_names in os.listdir(image_path)]
 mask_images = [fname.replace('RGBImages', 'Mask') for fname in rgb_images]
-outlog.info('{} Images used for training'.format(len(rgb_images)))
+run.log('{} Images used for training'.format(len(rgb_images)))
 
 if args.verbose:
-    outlog.info("Input Image size:{}".format(args.imgsize))
-    outlog.info("N_classes:{}".format(args.classes))
-    outlog.info("LossFunction:{}\n\tEpochs:{}\n\tBatch_size:{}".format(args.loss, args.epochs, args.batch_size))
-    outlog.info("Backbone:{}\n\tMetrics:{}\n\tOptimizer:{}".format(args.backbone, args.metrics, args.optimizer))
-    outlog.info("Model artifacts stored at {}".format(osp.join(args.path, args.out_path)))
+    run.log("Input Image size:{}".format(args.imgsize))
+    run.log("N_classes:{}".format(args.classes))
+    run.log("LossFunction:{}\n\tEpochs:{}\n\tBatch_size:{}".format(args.loss, args.epochs, args.batch_size))
+    run.log("Backbone:{}\n\tMetrics:{}\n\tOptimizer:{}".format(args.backbone, args.metrics, args.optimizer))
+    run.log("Model artifacts stored at {}".format(osp.join(args.path, args.out_path)))
 
 train_generator = DataGenerator(image_files=rgb_images,
                                 mask_files=mask_images,
@@ -50,8 +64,8 @@ train_generator = DataGenerator(image_files=rgb_images,
                                 )
 
 X_train, y_train = train_generator.__getitem__(0)
-outlog.info("Model Input data shape {}".format(X_train.shape))
-outlog.info("Model Output data shape {}".format(y_train.shape))
+run.log("Model Input data shape {}".format(X_train.shape))
+run.log("Model Output data shape {}".format(y_train.shape))
 
 train_model = TrainNetwork(backbone=args.backbone,
                            optimizer=args.optimizer,
@@ -65,5 +79,5 @@ train_model = TrainNetwork(backbone=args.backbone,
 
 # compile model
 train_model.transform(test_generator=train_generator, monitor_param='dice_metric')
-train_model.fit(train_generator)
-outlog.info("Model Training done..")
+# train_model.fit(train_generator)
+run.log("Model Training done..")
