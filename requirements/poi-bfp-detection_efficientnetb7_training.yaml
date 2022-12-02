@@ -108,6 +108,7 @@ dependencies:
     - azureml-automl-core==1.17.0
     - azureml-core==1.17.0.post1
     - azureml-dataprep==2.4.5
+    - azure-storage-blob==12.14.1
     - azureml-dataprep-native==24.0.0
     - azureml-dataprep-rslex==1.2.3
     - azureml-dataset-runtime==1.17.0

@@ -7,11 +7,10 @@ import time
 from data_pipeline.data_generator import DataGenerator
 from train_pipeline.segmentation_unet import TrainNetwork
 from utils.img_utils import create_logger as logger
-from utils.azutils import download_datasets
+from utils.azutils import download_datasets, download_from_blobstorage
 
 warnings.filterwarnings("ignore")
 
-VM_BASE_PATH = "/home/"
 outlog = logger()
 
 parser = argparse.ArgumentParser(description='Data and Train Pipeline for building footprint detection')
@@ -35,22 +34,20 @@ args = parser.parse_args()
 run = azure_core.Run.get_context()
 # Get Azure Machine Learning workspace
 ws = run.experiment.workspace
+run.log("SubsctionID:{}", f"{ws.subscription_id}s")
 
-# Download all data at specified VM path
-download_time_start = time.time()
-download_datasets(ws, args.ground_truth_data, VM_BASE_PATH)
-download_duration = round(time.time() - download_time_start)
-
-run.log("Download dataset duration", f"{download_duration // 60}min {download_duration % 60}s")
-run.log("os path in vm ".format(os.system('ls /home/')))
+# # Download all data at specified VM path
+# download_time_start = time.time()
+# download_datasets(ws,args.path,VM_BASE_PATH)
+# download_duration = round(time.time() - download_time_start)
 
 image_path = osp.join(VM_BASE_PATH, args.path, 'Image')
 rgb_images = [osp.join(image_path, image_names) for image_names in os.listdir(image_path)]
 mask_images = [fname.replace('RGBImages', 'Mask') for fname in rgb_images]
-run.log('{} Images used for training'.format(len(rgb_images)))
+run.log('{} Images used for training', f"{len(rgb_images)}")
 
 if args.verbose:
-    run.log("Input Image size:{}".format(args.imgsize))
+    run.log("Input Image size:{}", f"{args.imgsize}")
     run.log("N_classes:{}".format(args.classes))
     run.log("LossFunction:{}\n\tEpochs:{}\n\tBatch_size:{}".format(args.loss, args.epochs, args.batch_size))
     run.log("Backbone:{}\n\tMetrics:{}\n\tOptimizer:{}".format(args.backbone, args.metrics, args.optimizer))
@@ -79,5 +76,7 @@ train_model = TrainNetwork(backbone=args.backbone,
 
 # compile model
 train_model.transform(test_generator=train_generator, monitor_param='dice_metric')
-# train_model.fit(train_generator)
-run.log("Model Training done..")
+stime = time.time()
+train_model.fit(train_generator)
+duration = round(time.time() - stime)
+run.log("Model Training done in", f"{duration // 60}min {duration % 60}s")

@@ -15,7 +15,6 @@ def dice_metric(y_pred, y_true):
     union = K.sum(K.sum(K.abs(y_true) + K.abs(y_pred), axis=-1))
     # if y_pred.sum() == 0 and y_pred.sum() == 0:
     #     return 1.0
-
     return 2*intersection / union
 
 def jaccard_coef_int(y_true, y_pred):
@@ -58,15 +57,3 @@ def jaccard_distance_loss(y_true, y_pred, smooth=100):
 
 def bce_logdice_loss(y_true, y_pred):
     return tf.keras.losses.binary_crossentropy(y_true, y_pred) - K.log(1. - dice_loss(y_true, y_pred))
-
-class Display_callback(tf.keras.callbacks.Callback):
-    def on_epoch_end(self, epoch,PATIENCE=10):
-        if (epoch + 1) % PATIENCE == 0:
-            input_img, mask_img = get_sample_image()
-            predicted_img = self.model.predict(np.expand_dims(input_img, axis=0))
-            predicted_img = np.reshape(predicted_img, (predicted_img.shape[1], predicted_img.shape[2], 1))
-            # display_predictions(predicted_img, mask_img, input_img)
-
-            # save the logs images on Neptune
-            #run['predictions/{}'.format(epoch+1)].upload(File.as_image(final_image))
-            print("Displaying results at: {}".format(epoch + 1))
