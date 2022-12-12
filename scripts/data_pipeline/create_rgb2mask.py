@@ -9,13 +9,12 @@ from sklearn.model_selection import train_test_split
 
 logger = img_util.create_logger()
 
-class DataCreation:
+class CreateMaskImages:
     def __init__(self, outputpixtype='Byte', out_format='GTiff', rescale_type='rescale', convert_to_rgb=False):
         self.outpixtype = outputpixtype
         self.out_format = out_format
         self.rescale_type = rescale_type
         self.covert_data_type = convert_to_rgb
-
 
     def create_rgb_masks(self, input_raster_path, geojson_path, outputdirectory='output_data', verbose=0):
         output_rgbpath = osp.join(outputdirectory, 'RGBImage')
