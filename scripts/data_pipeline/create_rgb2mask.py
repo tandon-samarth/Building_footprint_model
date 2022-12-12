@@ -1,13 +1,15 @@
 import glob
 import os
 import os.path as osp
-import numpy as np
+
 import cv2
+import numpy as np
+from sklearn.model_selection import train_test_split
 from utils import img_utils as img_util
 from utils.geo_utils import convertTo8Bit, create_poly_mask
-from sklearn.model_selection import train_test_split
 
 logger = img_util.create_logger()
+
 
 class CreateMaskImages:
     def __init__(self, outputpixtype='Byte', out_format='GTiff', rescale_type='rescale', convert_to_rgb=False):
