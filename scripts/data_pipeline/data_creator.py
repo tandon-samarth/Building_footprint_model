@@ -5,39 +5,38 @@ import cv2
 import numpy as np
 import rasterio
 import mercantile
+from tqdm import tqdm
 from shapely.geometry import Polygon
 from tenacity import retry, stop_after_attempt
 from rasterio.transform import Affine
-
+from rasterio import features as fet
 
 class CreateData:
-    def __init__(self, ground_truth_path, out_path='output', img_width=512, img_height=512, zoom_level=17):
+    def __init__(self, ground_truth_path, out_path='output', img_width=512, img_height=512, zoom_level=17,
+                 prefix='County'):
         self.__img_width__ = img_width
         self.__img_height__ = img_height
         self.__zoom__ = zoom_level
 
-        self.gt_mask = gpd.read_file(ground_truth_path)
+        self.gt_mask = gpd.read_file(ground_truth_path, crs=4326)
         self.spartial_index = self.gt_mask.sindex
+        self.out_path = out_path
+        self.prefix = prefix
 
-    def create_data_for_county(self, geojson_path, out_path='output', crs='4326', ):
-        if not os.path.isdir(out_path):
-            os.makedirs(out_path)
+    def create_data_for_county(self, geojson_path, crs='4326'):
         gdf = gpd.read_file(geojson_path, crs=4326)
         bounds = gdf.geometry.loc[0].bounds
+
         tiles = mercantile.tiles(bounds[0], bounds[1], bounds[2], bounds[3], zooms=self.__zoom__)
-        for i, tile in enumerate(tiles):
+
+        for i, tile in tqdm(enumerate(tiles)):
             val = mercantile.bounds(tile)
+
             img = self.extractSatelliteImages(val.west, val.south, val.east, val.north,
                                               height=str(self.__img_height__),
                                               width=str(self.__img_width__),
                                               )
-            self.convertToTiff(img, val.west, val.south, val.east, val.north,
-                               height=self.__img_height__,
-                               width=self.__img_width__,
-                               path=out_path,
-                               imagename='image_{}_{}_{}_{}'.format(self.__img_height__,
-                                                                    self.__img_width__,
-                                                                    self.__zoom__, i))
+
             polygon = Polygon(
                 [(val.west, val.south), (val.west, val.north), (val.east, val.north), (val.east, val.south),
                  (val.west, val.south)])
@@ -45,27 +44,35 @@ class CreateData:
             possible_matches_index = list(self.spartial_index.intersection(polygon.bounds))
             possible_matches = self.gt_mask.iloc[possible_matches_index]
             bounds = val.west, val.south, val.east, val.north
+
             if possible_matches.empty:
                 img = np.zeros([self.__img_height__, self.__img_width__, 1], dtype=np.uint8)
+                continue
             else:
-                img = self.vector_to_raster(possible_matches.geometry, self.box_to_affline(bounds, img_shape=(
+                self.convertToTiff(img, val.south, val.west, val.north, val.east,
+                                   height=self.__img_height__,
+                                   width=self.__img_width__,
+                                   path=os.path.join(self.out_path, 'image'),
+                                   imagename='image_{}_{}_{}_{}'.format(self.__img_height__, self.__zoom__, self.prefix,
+                                                                        i)
+                                   )
+                mask = self.vector_to_raster(possible_matches.geometry, self.bbox_to_affine(bounds, img_shape=(
                     self.__img_height__, self.__img_width__)),
-                                            img_shape=(self.__img_height__, self.__img_width__))
-                img = np.expand_dims(img, axis=-1)
-                img = img * 255
-                self.convertToTiff(img, val.west, val.south, val.east, val.north,
+                                             img_shape=(self.__img_height__, self.__img_width__))
+                mask = np.expand_dims(mask, axis=-1)
+            mask = mask * 255
+            self.convertToTiff(mask, val.south, val.west, val.north, val.east,
                                height=self.__img_height__,
                                width=self.__img_width__,
-                               path=out_path,
-                               imagename='mask_{}_{}_{}_{}'.format(self.__img_height__,
-                                                                    self.__img_width__,
-                                                                    self.__zoom__, i))
+                               path=os.path.join(self.out_path, 'mask'),
+                               chanenls=1,
+                               imagename='mask_{}_{}_{}_{}'.format(self.__img_height__, self.__zoom__, self.prefix, i))
         return 0
 
     @staticmethod
     @retry(stop=stop_after_attempt(3))
     def extractSatelliteImages(minX, minY, maxX, maxY, height='512', width='512'):
-        url = f"http://wms3.mapsavvy.com/WMSService.svc/db45ac1c32ac4e9caa5ecc3473998c81/WMSLatLon?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=Aerial&SRS=EPSG:3857&CRS=EPSG:3857&BBOX={minX},{minY},{maxX},{maxY}&WIDTH={width}&HEIGHT={height}&STYLES=&TRANSPARENT=false&FORMAT=image/png"
+        url = f"http://wms3.mapsavvy.com/WMSService.svc/db45ac1c32ac4e9caa5ecc3473998c81/WMSLatLon?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=Aerial&SRS=EPSG:4326&CRS=EPSG:4326&BBOX={minX},{minY},{maxX},{maxY}&WIDTH={width}&HEIGHT={height}&STYLES=&TRANSPARENT=false&FORMAT=image/png"
         req = urllib.request.Request(url)
         resp = urllib.request.urlopen(req)
         arr = np.asarray(bytearray(resp.read()), dtype=np.uint8)
@@ -74,12 +81,17 @@ class CreateData:
 
     @staticmethod
     def convertToTiff(img, minlat, minlong, maxlat, maxlong, height=512, width=512, imagename='sample_image',
-                      path='output', crs="epsg:4326"):
+                      path='output', crs="epsg:4326", chanenls=3, prefix=1):
+        if not os.path.isdir(path):
+            os.makedirs(path)
+
         filename = imagename + '.tiff'
+        if os.path.isfile(filename):
+            return
         transform = rasterio.transform.from_bounds(minlong, minlat, maxlong, maxlat, width, height)
         with rasterio.open(os.path.join(path, filename), 'w', driver='GTiff', dtype=rasterio.uint8, count=3,
                            width=width, height=height, transform=transform, crs=crs) as dst:
-            for index in range(3):
+            for index in range(chanenls):
                 dst.write(img[:, :, index], indexes=index + 1)
 
     @staticmethod
@@ -92,10 +104,11 @@ class CreateData:
         possible_matches_index = list(spatial_index.intersection(polygon.bounds))
         possible_matches = df.iloc[possible_matches_index]
         bounds = minlong, minlat, maxlong, maxlat
+        return possible_matches , bounds
 
     @staticmethod
     def vector_to_raster(road_geom, src_transform, img_shape=(512, 512)):
-        return rasterio.features.rasterize(
+        return fet.rasterize(
             [shape for shape in road_geom],
             out_shape=img_shape,
             transform=src_transform,
