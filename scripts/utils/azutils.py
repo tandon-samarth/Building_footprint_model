@@ -1,5 +1,6 @@
 import numpy as np
 import json
+
 import azureml.core as azure_core
 from azure.storage.blob import BlobServiceClient
 
@@ -20,4 +21,5 @@ def download_from_blobstorage():
         CONTAINERNAME, BLOBNAME, snapshot=None)
     blob_data = blob_client_instance.download_blob()
     data = blob_data.readall()
-    print(data)
+
+

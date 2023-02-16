@@ -58,3 +58,14 @@ class CreateMaskImages:
         logger.info('Total Training RGB images:{}'.format(x_train.shape[0]))
         logger.info('Total Test RGB images:{}'.format(x_test.shape[0]))
         return x_train, x_test
+
+
+if __name__ == '__main__':
+    data_path = "../BFP-detection/data/AOI_2_Vegas_Train"
+    raster_path = os.path.join(data_path, 'RGB-PanSharpen')
+    geojson_path = os.path.join(data_path, 'geojson/buildings')
+
+    out_path = os.path.join(data_path, 'output')
+    create_data = CreateMaskImages()
+
+    create_data.create_rgb_masks(input_raster_path=raster_path, geojson_path=geojson_path, outputdirectory=out_path)
